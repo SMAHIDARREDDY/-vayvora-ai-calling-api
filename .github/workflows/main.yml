@@ -21,3 +21,6 @@ jobs:
         # Step 7 - Static Code Analysis
       - name: Lint
         run: npm run lint
+        # Step 8 - Build
+      - name: Build application
+        run: npm run build
