@@ -4,12 +4,17 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       # Step 5 - Checkout Source Code
       - name: Checkout code
         uses: actions/checkout@v4
+       # Step 6 - Dependency Installation
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+        node-version: '20'
+      - name: Install dependencies
+        run: npm install
