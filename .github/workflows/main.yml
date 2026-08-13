@@ -24,3 +24,6 @@ jobs:
         # Step 8 - Build
       - name: Build application
         run: npm run build
+      # Step 10 - Security & Vulnerability Scan
+      - name: Security Audit
+        run: npm audit --audit-level=high
