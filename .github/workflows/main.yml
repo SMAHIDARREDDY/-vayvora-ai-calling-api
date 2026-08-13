@@ -18,3 +18,6 @@ jobs:
         node-version: '20'
       - name: Install dependencies
         run: npm install
+        # Step 7 - Static Code Analysis
+      - name: Lint
+        run: npm run lint
