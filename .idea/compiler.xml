@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <annotationProcessing>
+      <profile name="Maven default annotation processors profile" enabled="true">
+        <sourceOutputDir name="target/generated-sources/annotations" />
+        <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
+        <outputRelativeToContentRoot value="true" />
+        <module name="auth-service" />
+        <module name="knowledge-service" />
+        <module name="analytics-service" />
+        <module name="api-gateway" />
+        <module name="shared-module" />
+        <module name="call-service" />
+        <module name="agent-service" />
+        <module name="campaign-service" />
+      </profile>
+    </annotationProcessing>
+  </component>
+  <component name="JavacSettings">
+    <option name="ADDITIONAL_OPTIONS_OVERRIDE">
+      <module name="agent-service" options="-parameters" />
+      <module name="analytics-service" options="-parameters" />
+      <module name="api-gateway" options="-parameters" />
+      <module name="auth-service" options="-parameters" />
+      <module name="call-service" options="-parameters" />
+      <module name="campaign-service" options="-parameters" />
+      <module name="knowledge-service" options="-parameters" />
+      <module name="shared-module" options="-parameters" />
+    </option>
+  </component>
+</project>

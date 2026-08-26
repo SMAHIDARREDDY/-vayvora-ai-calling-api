@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: call-service
+  datasource:
+    url: jdbc:postgresql://postgres:5432/vayvora_db
+    username: vayvora
+    password: vayvora_secure_password
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+  redis:
+    host: redis
+    port: 6379
+  kafka:
+    bootstrap-servers: kafka:9092
+    producer:
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: call-service-group
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+
+server:
+  port: 8004
+  servlet:
+    context-path: /api/v1
+
+logging:
+  level:
+    root: INFO
+    com.vayvora: DEBUG

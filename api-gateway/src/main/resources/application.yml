@@ -1,0 +1,60 @@
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      routes:
+        - id: auth-service
+          uri: http://auth-service:8001
+          predicates:
+            - Path=/api/v1/auth/**
+          filters:
+            - StripPrefix=2
+        
+        - id: agent-service
+          uri: http://agent-service:8003
+          predicates:
+            - Path=/api/v1/agents/**
+          filters:
+            - name: AuthorizationFilter
+            - StripPrefix=2
+        
+        - id: call-service
+          uri: http://call-service:8004
+          predicates:
+            - Path=/api/v1/calls/**
+          filters:
+            - name: AuthorizationFilter
+            - StripPrefix=2
+        
+        - id: campaign-service
+          uri: http://campaign-service:8005
+          predicates:
+            - Path=/api/v1/campaigns/**
+          filters:
+            - name: AuthorizationFilter
+            - StripPrefix=2
+        
+        - id: analytics-service
+          uri: http://analytics-service:8006
+          predicates:
+            - Path=/api/v1/analytics/**
+          filters:
+            - name: AuthorizationFilter
+            - StripPrefix=2
+        
+        - id: knowledge-service
+          uri: http://knowledge-service:8007
+          predicates:
+            - Path=/api/v1/knowledge/**
+          filters:
+            - name: AuthorizationFilter
+            - StripPrefix=2
+
+server:
+  port: 8000
+
+logging:
+  level:
+    root: INFO
+    org.springframework.cloud.gateway: DEBUG

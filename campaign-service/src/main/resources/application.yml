@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: campaign-service
+  datasource:
+    url: jdbc:postgresql://postgres:5432/vayvora_db
+    username: vayvora
+    password: vayvora_secure_password
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+  kafka:
+    bootstrap-servers: kafka:9092
+
+server:
+  port: 8005
+  servlet:
+    context-path: /api/v1
+
+logging:
+  level:
+    root: INFO
+    com.vayvora: DEBUG
