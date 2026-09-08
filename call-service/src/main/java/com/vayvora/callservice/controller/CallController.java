@@ -1,111 +1,105 @@
 package com.vayvora.callservice.controller;
 
-import com.vayvora.callservice.dto.InitiateCallRequest;
-import com.vayvora.callservice.dto.CallResponse;
-import com.vayvora.callservice.dto.UpdateCallStatusRequest;
+import com.vayvora.callservice.dto.CallDtos.AppendMessageRequest;
+import com.vayvora.callservice.dto.CallDtos.CallDetailResponse;
+import com.vayvora.callservice.dto.CallDtos.CallIntelligenceRequest;
+import com.vayvora.callservice.dto.CallDtos.CallResponse;
+import com.vayvora.callservice.dto.CallDtos.InitiateCallRequest;
+import com.vayvora.callservice.dto.CallDtos.MessageResponse;
+import com.vayvora.callservice.dto.CallDtos.TranscriptResponse;
+import com.vayvora.callservice.dto.CallDtos.UpdateCallStateRequest;
 import com.vayvora.callservice.service.CallService;
+import com.vayvora.shared.enums.Enums.CallState;
+import jakarta.validation.Valid;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
+/** Call endpoints (spec §30). */
 @RestController
-@RequestMapping("/api/v1/calls")
+@RequestMapping("/calls")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class CallController {
+
+    private static final int MAX_PAGE_SIZE = 100;
+
     private final CallService callService;
 
+    @GetMapping
+    public Page<CallResponse> list(
+            @RequestParam(required = false) CallState state,
+            @RequestParam(required = false) String agentId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return callService.list(state, agentId,
+                PageRequest.of(Math.max(0, page), clamp(size),
+                        Sort.by(Sort.Direction.DESC, "startedAt")));
+    }
+
+    /** Declared before {@code /{id}} so "live" is not parsed as a call id. */
+    @GetMapping("/live")
+    public List<CallResponse> live() {
+        return callService.live();
+    }
+
+    @GetMapping("/{id}")
+    public CallResponse get(@PathVariable String id) {
+        return callService.get(id);
+    }
+
+    /** Call plus every artifact derived from it. */
+    @GetMapping("/{id}/detail")
+    public CallDetailResponse detail(@PathVariable String id) {
+        return callService.detail(id);
+    }
+
+    @GetMapping("/{id}/transcript")
+    public TranscriptResponse transcript(@PathVariable String id) {
+        return callService.transcript(id);
+    }
+
     @PostMapping
-    public ResponseEntity<?> initiateCall(@RequestBody InitiateCallRequest request) {
-        try {
-            CallResponse response = callService.initiateCall(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new ErrorResponse("Failed to initiate call: " + e.getMessage()));
-        }
+    public ResponseEntity<CallResponse> initiate(
+            @Valid @RequestBody InitiateCallRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(callService.initiate(request));
     }
 
-    @GetMapping("/{callId}")
-    public ResponseEntity<?> getCall(@PathVariable String callId,
-                                    @RequestHeader("X-Organization-Id") Long organizationId) {
-        try {
-            CallResponse response = callService.getCall(callId, organizationId);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(new ErrorResponse("Call not found"));
-        }
+    @PatchMapping("/{id}/state")
+    public CallResponse updateState(@PathVariable String id,
+                                    @Valid @RequestBody UpdateCallStateRequest request) {
+        return callService.updateState(id, request);
     }
 
-    @PatchMapping("/{callId}/status")
-    public ResponseEntity<?> updateCallStatus(@PathVariable String callId,
-                                             @RequestBody UpdateCallStatusRequest request,
-                                             @RequestHeader("X-Organization-Id") Long organizationId) {
-        try {
-            CallResponse response = callService.updateCallStatus(callId, organizationId, request);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new ErrorResponse("Failed to update call status"));
-        }
+    @PostMapping("/{id}/messages")
+    public ResponseEntity<MessageResponse> appendMessage(
+            @PathVariable String id,
+            @Valid @RequestBody AppendMessageRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(callService.appendMessage(id, request));
     }
 
-    @GetMapping("/organizations/{organizationId}/calls")
-    public ResponseEntity<?> getOrganizationCalls(@PathVariable Long organizationId,
-                                                 @RequestParam(defaultValue = "50") int limit,
-                                                 @RequestParam(defaultValue = "0") int offset,
-                                                 @RequestParam(required = false) String status,
-                                                 @RequestParam(required = false) Long agentId) {
-        try {
-            return ResponseEntity.ok(callService.getOrganizationCalls(organizationId, limit, offset, status, agentId));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponse("Failed to fetch calls"));
-        }
+    /** Attaches summary, sentiment, intent and lead score after the call. */
+    @PostMapping("/{id}/intelligence")
+    public CallDetailResponse attachIntelligence(
+            @PathVariable String id,
+            @RequestBody CallIntelligenceRequest request) {
+        return callService.attachIntelligence(id, request);
     }
 
-    @PostMapping("/{callId}/recording")
-    public ResponseEntity<?> uploadRecording(@PathVariable String callId,
-                                            @RequestBody RecordingUploadRequest request,
-                                            @RequestHeader("X-Organization-Id") Long organizationId) {
-        try {
-            CallResponse response = callService.uploadRecording(callId, organizationId, request);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new ErrorResponse("Failed to upload recording"));
-        }
+    private static int clamp(int size) {
+        return Math.min(Math.max(1, size), MAX_PAGE_SIZE);
     }
-
-    @DeleteMapping("/{callId}")
-    public ResponseEntity<?> deleteCall(@PathVariable String callId,
-                                       @RequestHeader("X-Organization-Id") Long organizationId) {
-        try {
-            callService.deleteCall(callId, organizationId);
-            return ResponseEntity.ok(new SuccessResponse("Call deleted successfully"));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new ErrorResponse("Failed to delete call"));
-        }
-    }
-}
-
-class RecordingUploadRequest {
-    private String recordingUrl;
-    private Integer duration;
-    
-    public String getRecordingUrl() { return recordingUrl; }
-    public Integer getDuration() { return duration; }
-}
-
-class ErrorResponse {
-    private String error;
-    public ErrorResponse(String error) { this.error = error; }
-}
-
-class SuccessResponse {
-    private String message;
-    public SuccessResponse(String message) { this.message = message; }
 }

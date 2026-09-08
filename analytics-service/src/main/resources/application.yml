@@ -1,29 +1,63 @@
 spring:
   application:
     name: analytics-service
+
+  # SAMPLE connection details. Replace DATABASE_URL / DB_USERNAME / DB_PASSWORD
+  # with the real values via environment variables; nothing here is a live
+  # credential.
   datasource:
-    url: jdbc:postgresql://postgres:5432/vayvora_db
-    username: vayvora
-    password: vayvora_secure_password
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/vayvora_db}
+    username: ${DB_USERNAME:vayvora}
+    password: ${DB_PASSWORD:change_me}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      pool-name: analytics-pool
+
   jpa:
     hibernate:
-      ddl-auto: update
-  redis:
-    host: redis
-    port: 6379
+      # Schema is owned by the SQL migrations in db/migration; Hibernate only
+      # validates that the tables it expects are present.
+      ddl-auto: ${JPA_DDL_AUTO:validate}
+    open-in-view: false
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          time_zone: UTC
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 60000
+
   kafka:
-    bootstrap-servers: kafka:9092
+    bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
     consumer:
       group-id: analytics-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.vayvora.*"
 
 server:
-  port: 8006
+  port: ${SERVER_PORT:8006}
   servlet:
     context-path: /api/v1
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
 
 logging:
   level:
     root: INFO
-    com.vayvora: DEBUG
+    com.vayvora: ${LOG_LEVEL:DEBUG}

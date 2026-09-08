@@ -1,60 +1,75 @@
 spring:
   application:
     name: api-gateway
+
   cloud:
     gateway:
+      # No StripPrefix filter anywhere below: each service is configured with a
+      # /api/v1 context path, so the full incoming path is what it expects.
+      # Stripping here would turn /api/v1/agents into /agents and every route
+      # would 404.
       routes:
         - id: auth-service
-          uri: http://auth-service:8001
+          uri: ${AUTH_SERVICE_URI:http://localhost:8001}
           predicates:
             - Path=/api/v1/auth/**
-          filters:
-            - StripPrefix=2
-        
+
         - id: agent-service
-          uri: http://agent-service:8003
+          uri: ${AGENT_SERVICE_URI:http://localhost:8003}
           predicates:
             - Path=/api/v1/agents/**
-          filters:
-            - name: AuthorizationFilter
-            - StripPrefix=2
-        
+
         - id: call-service
-          uri: http://call-service:8004
+          uri: ${CALL_SERVICE_URI:http://localhost:8004}
           predicates:
             - Path=/api/v1/calls/**
-          filters:
-            - name: AuthorizationFilter
-            - StripPrefix=2
-        
+
         - id: campaign-service
-          uri: http://campaign-service:8005
+          uri: ${CAMPAIGN_SERVICE_URI:http://localhost:8005}
           predicates:
             - Path=/api/v1/campaigns/**
-          filters:
-            - name: AuthorizationFilter
-            - StripPrefix=2
-        
+
+        - id: contact-routes
+          uri: ${CAMPAIGN_SERVICE_URI:http://localhost:8005}
+          predicates:
+            - Path=/api/v1/contacts/**
+
         - id: analytics-service
-          uri: http://analytics-service:8006
+          uri: ${ANALYTICS_SERVICE_URI:http://localhost:8006}
           predicates:
             - Path=/api/v1/analytics/**
-          filters:
-            - name: AuthorizationFilter
-            - StripPrefix=2
-        
-        - id: knowledge-service
-          uri: http://knowledge-service:8007
+
+        - id: usage-billing-routes
+          uri: ${ANALYTICS_SERVICE_URI:http://localhost:8006}
           predicates:
-            - Path=/api/v1/knowledge/**
-          filters:
-            - name: AuthorizationFilter
-            - StripPrefix=2
+            - Path=/api/v1/usage/**,/api/v1/billing/**
+
+        - id: knowledge-service
+          uri: ${KNOWLEDGE_SERVICE_URI:http://localhost:8007}
+          predicates:
+            - Path=/api/v1/knowledge-bases/**,/api/v1/knowledge-documents/**
 
 server:
-  port: 8000
+  port: ${SERVER_PORT:8000}
+
+jwt:
+  # Must match the auth service's secret, or tokens it issues will fail
+  # verification here.
+  secret: ${JWT_SECRET:vayvora_local_development_secret_key_change_me}
+  expiration: ${JWT_EXPIRATION:86400000}
+
+cors:
+  # Flutter web dev server and Angular dev server by default.
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:8080,http://localhost:4200}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
 
 logging:
   level:
     root: INFO
-    org.springframework.cloud.gateway: DEBUG
+    com.vayvora: ${LOG_LEVEL:DEBUG}
+    org.springframework.cloud.gateway: ${GATEWAY_LOG_LEVEL:INFO}

@@ -1,0 +1,32 @@
+# Build output
+target/
+*.jar
+*.war
+*.class
+
+# Environment — never commit real credentials
+.env
+.env.local
+*.env
+!.env.example
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Maven wrapper downloads
+.mvn/wrapper/maven-wrapper.jar

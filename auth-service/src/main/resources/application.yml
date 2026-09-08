@@ -1,44 +1,55 @@
 spring:
   application:
     name: auth-service
+
+  # SAMPLE connection details. Replace DATABASE_URL / DB_USERNAME / DB_PASSWORD
+  # with the real values via environment variables; nothing here is a live
+  # credential.
   datasource:
-    url: jdbc:postgresql://postgres:5432/vayvora_db
-    username: vayvora
-    password: vayvora_secure_password
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/vayvora_db}
+    username: ${DB_USERNAME:vayvora}
+    password: ${DB_PASSWORD:change_me}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      pool-name: auth-pool
+
   jpa:
     hibernate:
-      ddl-auto: update
+      # Schema is owned by the SQL migrations in db/migration; Hibernate only
+      # validates that the tables it expects are present.
+      ddl-auto: ${JPA_DDL_AUTO:validate}
+    open-in-view: false
     show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
-  redis:
-    host: redis
-    port: 6379
-    timeout: 60000
-  kafka:
-    bootstrap-servers: kafka:9092
-    producer:
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-    consumer:
-      group-id: auth-service-group
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      properties:
-        spring.json.trusted.packages: "*"
+        jdbc:
+          time_zone: UTC
 
 server:
-  port: 8001
+  port: ${SERVER_PORT:8001}
   servlet:
     context-path: /api/v1
 
 jwt:
-  secret: your_super_secret_jwt_key_change_in_production
-  expiration: 86400000
-  refresh-expiration: 604800000
+  # Development default. Set JWT_SECRET in every deployed environment; it must
+  # be at least 32 bytes and identical across services that verify tokens.
+  secret: ${JWT_SECRET:vayvora_local_development_secret_key_change_me}
+  expiration: ${JWT_EXPIRATION:86400000}
+  refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
 
 logging:
   level:
     root: INFO
-    com.vayvora: DEBUG
+    com.vayvora: ${LOG_LEVEL:DEBUG}

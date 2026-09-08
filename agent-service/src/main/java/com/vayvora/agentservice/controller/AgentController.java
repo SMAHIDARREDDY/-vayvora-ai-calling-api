@@ -1,102 +1,93 @@
 package com.vayvora.agentservice.controller;
 
-import com.vayvora.agentservice.dto.CreateAgentRequest;
-import com.vayvora.agentservice.dto.AgentResponse;
+import com.vayvora.agentservice.dto.AgentDtos.AgentConfigRequest;
+import com.vayvora.agentservice.dto.AgentDtos.AgentResponse;
+import com.vayvora.agentservice.dto.AgentDtos.AgentVersionResponse;
+import com.vayvora.agentservice.dto.AgentDtos.ToolResponse;
+import com.vayvora.agentservice.dto.AgentDtos.VoiceResponse;
 import com.vayvora.agentservice.service.AgentService;
+import com.vayvora.shared.enums.Enums.AgentStatus;
+import jakarta.validation.Valid;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
+/** AI agent endpoints (spec §30). */
 @RestController
-@RequestMapping("/api/v1/agents")
+@RequestMapping("/agents")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class AgentController {
+
+    private static final int MAX_PAGE_SIZE = 100;
+
     private final AgentService agentService;
 
     @GetMapping
-    public ResponseEntity<?> getAgents(@RequestParam(defaultValue = "50") int limit,
-                                       @RequestParam(defaultValue = "0") int offset,
-                                       @RequestHeader("X-Organization-Id") Long organizationId) {
-        try {
-            return ResponseEntity.ok(agentService.getAgents(organizationId, limit, offset));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponse("Failed to fetch agents"));
-        }
+    public Page<AgentResponse> list(
+            @RequestParam(required = false) AgentStatus status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return agentService.list(status,
+                PageRequest.of(Math.max(0, page), clamp(size),
+                        Sort.by(Sort.Direction.DESC, "updatedAt")));
     }
 
-    @PostMapping
-    public ResponseEntity<?> createAgent(@RequestBody CreateAgentRequest request,
-                                        @RequestHeader("X-Organization-Id") Long organizationId) {
-        try {
-            AgentResponse response = agentService.createAgent(organizationId, request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new ErrorResponse("Failed to create agent: " + e.getMessage()));
-        }
+    /** Voices and tools are listed before the id route so they are not read as ids. */
+    @GetMapping("/voices")
+    public List<VoiceResponse> voices() {
+        return agentService.availableVoices();
+    }
+
+    @GetMapping("/tools")
+    public List<ToolResponse> tools() {
+        return agentService.availableTools();
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<?> getAgent(@PathVariable Long id,
-                                     @RequestHeader("X-Organization-Id") Long organizationId) {
-        try {
-            AgentResponse response = agentService.getAgent(id, organizationId);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(new ErrorResponse("Agent not found"));
-        }
+    public AgentResponse get(@PathVariable String id) {
+        return agentService.get(id);
+    }
+
+    @GetMapping("/{id}/versions")
+    public List<AgentVersionResponse> versions(@PathVariable String id) {
+        return agentService.versionHistory(id);
+    }
+
+    @PostMapping
+    public ResponseEntity<AgentResponse> create(
+            @Valid @RequestBody AgentConfigRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(agentService.create(request));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<?> updateAgent(@PathVariable Long id,
-                                        @RequestBody CreateAgentRequest request,
-                                        @RequestHeader("X-Organization-Id") Long organizationId) {
-        try {
-            AgentResponse response = agentService.updateAgent(id, organizationId, request);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new ErrorResponse("Failed to update agent"));
-        }
-    }
-
-    @DeleteMapping("/{id}")
-    public ResponseEntity<?> deleteAgent(@PathVariable Long id,
-                                        @RequestHeader("X-Organization-Id") Long organizationId) {
-        try {
-            agentService.deleteAgent(id, organizationId);
-            return ResponseEntity.ok(new SuccessResponse("Agent deleted successfully"));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new ErrorResponse("Failed to delete agent"));
-        }
+    public AgentResponse update(@PathVariable String id,
+                                @Valid @RequestBody AgentConfigRequest request) {
+        return agentService.update(id, request);
     }
 
     @PostMapping("/{id}/publish")
-    public ResponseEntity<?> publishAgent(@PathVariable Long id,
-                                         @RequestHeader("X-Organization-Id") Long organizationId) {
-        try {
-            AgentResponse response = agentService.publishAgent(id, organizationId);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new ErrorResponse("Failed to publish agent"));
-        }
+    public AgentResponse publish(@PathVariable String id) {
+        return agentService.publish(id);
     }
-}
 
-class ErrorResponse {
-    private String error;
-    public ErrorResponse(String error) { this.error = error; }
-    public String getError() { return error; }
-}
+    @PostMapping("/{id}/archive")
+    public AgentResponse archive(@PathVariable String id) {
+        return agentService.archive(id);
+    }
 
-class SuccessResponse {
-    private String message;
-    public SuccessResponse(String message) { this.message = message; }
-    public String getMessage() { return message; }
+    private static int clamp(int size) {
+        return Math.min(Math.max(1, size), MAX_PAGE_SIZE);
+    }
 }

@@ -1,143 +1,114 @@
 package com.vayvora.authservice.controller;
 
-import com.vayvora.shared.entities.User;
-import com.vayvora.authservice.dto.*;
+import com.vayvora.authservice.dto.AuthDtos.AuthResponse;
+import com.vayvora.authservice.dto.AuthDtos.ChangePasswordRequest;
+import com.vayvora.authservice.dto.AuthDtos.LoginRequest;
+import com.vayvora.authservice.dto.AuthDtos.MessageResponse;
+import com.vayvora.authservice.dto.AuthDtos.RefreshRequest;
+import com.vayvora.authservice.dto.AuthDtos.RegisterRequest;
+import com.vayvora.authservice.dto.AuthDtos.TokenResponse;
+import com.vayvora.authservice.dto.AuthDtos.UpdateProfileRequest;
+import com.vayvora.authservice.dto.AuthDtos.UserResponse;
 import com.vayvora.authservice.service.AuthService;
+import com.vayvora.shared.web.Web;
+import com.vayvora.shared.web.Web.UnauthorizedException;
+import jakarta.validation.Valid;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * Authentication endpoints (spec §30).
+ *
+ * <p>Paths here are relative to the service's {@code /api/v1} context path, so
+ * {@code /auth/login} is served at {@code /api/v1/auth/login}.
+ */
 @RestController
-@RequestMapping("/api/v1/auth")
+@RequestMapping("/auth")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class AuthController {
+
     private final AuthService authService;
 
-    /**
-     * POST /api/v1/auth/register
-     * Register new user
-     */
     @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody RegisterRequest request) {
-        try {
-            AuthResponse response = authService.register(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new ErrorResponse("Registration failed: " + e.getMessage()));
-        }
+    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(authService.register(request));
     }
 
-    /**
-     * POST /api/v1/auth/login
-     * User login
-     */
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody LoginRequest request) {
-        try {
-            AuthResponse response = authService.login(request);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(new ErrorResponse("Login failed: Invalid credentials"));
-        }
+    public AuthResponse login(@Valid @RequestBody LoginRequest request) {
+        return authService.login(request);
     }
 
-    /**
-     * POST /api/v1/auth/refresh-token
-     * Refresh access token
-     */
     @PostMapping("/refresh-token")
-    public ResponseEntity<?> refreshToken(@RequestBody RefreshTokenRequest request) {
-        try {
-            TokenResponse response = authService.refreshToken(request.getRefreshToken());
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(new ErrorResponse("Token refresh failed"));
-        }
+    public TokenResponse refresh(@Valid @RequestBody RefreshRequest request) {
+        return authService.refresh(request.refreshToken());
+    }
+
+    @PostMapping("/logout")
+    public MessageResponse logout(@Valid @RequestBody RefreshRequest request) {
+        authService.logout(request.refreshToken());
+        return new MessageResponse("Signed out");
     }
 
     /**
-     * POST /api/v1/auth/verify
-     * Verify JWT token
+     * Token introspection used by the gateway.
+     *
+     * <p>Returns 200 with {@code valid: true} or 401; both outcomes are useful
+     * to a caller deciding whether to refresh.
      */
     @PostMapping("/verify")
-    public ResponseEntity<?> verify(@RequestHeader("Authorization") String token) {
-        try {
-            boolean valid = authService.verifyToken(token.replace("Bearer ", ""));
-            return ResponseEntity.ok(new VerifyResponse(valid));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(new ErrorResponse("Token verification failed"));
-        }
+    public ResponseEntity<Map<String, Boolean>> verify(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        String token = stripBearer(authorization);
+        boolean valid = token != null && authService.verify(token);
+        return valid
+                ? ResponseEntity.ok(Map.of("valid", true))
+                : ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("valid", false));
     }
 
-    /**
-     * POST /api/v1/auth/logout
-     * User logout
-     */
-    @PostMapping("/logout")
-    public ResponseEntity<?> logout(@RequestHeader("Authorization") String token) {
-        try {
-            authService.logout(token.replace("Bearer ", ""));
-            return ResponseEntity.ok(new SuccessResponse("Logout successful"));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponse("Logout failed"));
-        }
+    /** Current user, identified by the gateway-set header. */
+    @GetMapping("/me")
+    public UserResponse me(@RequestHeader(Web.Headers.USER_ID) String userId) {
+        return authService.currentUser(userId);
     }
 
-    /**
-     * GET /api/v1/auth/profile
-     * Get user profile
-     */
-    @GetMapping("/profile")
-    public ResponseEntity<?> getProfile(@RequestHeader("Authorization") String token) {
-        try {
-            User user = authService.getUserFromToken(token.replace("Bearer ", ""));
-            return ResponseEntity.ok(authService.toUserResponse(user));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(new ErrorResponse("Failed to fetch profile"));
-        }
+    @PatchMapping("/me")
+    public UserResponse updateProfile(@RequestHeader(Web.Headers.USER_ID) String userId,
+                                      @RequestBody UpdateProfileRequest request) {
+        return authService.updateProfile(userId, request);
     }
 
-    /**
-     * PUT /api/v1/auth/profile
-     * Update user profile
-     */
-    @PutMapping("/profile")
-    public ResponseEntity<?> updateProfile(
-            @RequestHeader("Authorization") String token,
-            @RequestBody UpdateProfileRequest request) {
-        try {
-            User user = authService.getUserFromToken(token.replace("Bearer ", ""));
-            User updated = authService.updateProfile(user.getId(), request);
-            return ResponseEntity.ok(authService.toUserResponse(updated));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new ErrorResponse("Profile update failed"));
-        }
-    }
-
-    /**
-     * POST /api/v1/auth/change-password
-     * Change user password
-     */
     @PostMapping("/change-password")
-    public ResponseEntity<?> changePassword(
-            @RequestHeader("Authorization") String token,
-            @RequestBody ChangePasswordRequest request) {
-        try {
-            User user = authService.getUserFromToken(token.replace("Bearer ", ""));
-            authService.changePassword(user.getId(), request);
-            return ResponseEntity.ok(new SuccessResponse("Password changed successfully"));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new ErrorResponse("Password change failed: " + e.getMessage()));
+    public MessageResponse changePassword(
+            @RequestHeader(Web.Headers.USER_ID) String userId,
+            @Valid @RequestBody ChangePasswordRequest request) {
+        authService.changePassword(userId, request);
+        return new MessageResponse("Password changed. Existing sessions were signed out.");
+    }
+
+    private static String stripBearer(String authorization) {
+        if (authorization == null || authorization.isBlank()) {
+            return null;
         }
+        return authorization.regionMatches(true, 0, "Bearer ", 0, 7)
+                ? authorization.substring(7).trim()
+                : authorization.trim();
+    }
+
+    /** Surfaces a missing user header as 401 rather than a 400 from Spring. */
+    @org.springframework.web.bind.annotation.ExceptionHandler(
+            org.springframework.web.bind.MissingRequestHeaderException.class)
+    public ResponseEntity<Web.ApiError> missingHeader(
+            org.springframework.web.bind.MissingRequestHeaderException e) {
+        throw new UnauthorizedException("Authentication required");
     }
 }

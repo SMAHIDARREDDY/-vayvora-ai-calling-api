@@ -1,100 +1,79 @@
 package com.vayvora.analyticsservice.controller;
 
-import com.vayvora.analyticsservice.dto.*;
+import com.vayvora.analyticsservice.dto.AnalyticsDtos.AgentPerformanceResponse;
+import com.vayvora.analyticsservice.dto.AnalyticsDtos.BillingResponse;
+import com.vayvora.analyticsservice.dto.AnalyticsDtos.DashboardResponse;
+import com.vayvora.analyticsservice.dto.AnalyticsDtos.LeadBandResponse;
+import com.vayvora.analyticsservice.dto.AnalyticsDtos.SentimentResponse;
+import com.vayvora.analyticsservice.dto.AnalyticsDtos.TopicsResponse;
+import com.vayvora.analyticsservice.dto.AnalyticsDtos.TrendResponse;
+import com.vayvora.analyticsservice.dto.AnalyticsDtos.UsageResponse;
 import com.vayvora.analyticsservice.service.AnalyticsService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
+/** Analytics endpoints (spec §18, §30). */
 @RestController
-@RequestMapping("/api/v1/analytics")
+@RequestMapping("/analytics")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class AnalyticsController {
+
+    private static final int MAX_WINDOW_DAYS = 365;
+
     private final AnalyticsService analyticsService;
 
-    @GetMapping("/dashboard/{organizationId}")
-    public ResponseEntity<?> getDashboard(@PathVariable Long organizationId,
-                                         @RequestParam(required = false) String startDate,
-                                         @RequestParam(required = false) String endDate) {
-        try {
-            DashboardResponse response = analyticsService.getDashboard(organizationId, startDate, endDate);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponse("Failed to fetch dashboard"));
-        }
+    @GetMapping("/dashboard")
+    public DashboardResponse dashboard(@RequestParam(defaultValue = "1") int days) {
+        return analyticsService.dashboard(clampDays(days));
     }
 
-    @GetMapping("/calls/{organizationId}")
-    public ResponseEntity<?> getCallAnalytics(@PathVariable Long organizationId,
-                                             @RequestParam(required = false) Long agentId,
-                                             @RequestParam(required = false) Long campaignId,
-                                             @RequestParam(required = false) String sentiment) {
-        try {
-            return ResponseEntity.ok(analyticsService.getCallAnalytics(organizationId, agentId, campaignId, sentiment));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponse("Failed to fetch call analytics"));
-        }
+    @GetMapping("/trend")
+    public TrendResponse trend(@RequestParam(defaultValue = "14") int days) {
+        return analyticsService.trend(clampDays(days));
     }
 
-    @GetMapping("/sentiment/{organizationId}")
-    public ResponseEntity<?> getSentimentAnalysis(@PathVariable Long organizationId) {
-        try {
-            return ResponseEntity.ok(analyticsService.getSentimentAnalysis(organizationId));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponse("Failed to fetch sentiment analysis"));
-        }
+    @GetMapping("/sentiment")
+    public SentimentResponse sentiment() {
+        return analyticsService.sentiment();
     }
 
-    @GetMapping("/agent-performance/{organizationId}")
-    public ResponseEntity<?> getAgentPerformance(@PathVariable Long organizationId) {
-        try {
-            return ResponseEntity.ok(analyticsService.getAgentPerformance(organizationId));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponse("Failed to fetch agent performance"));
-        }
+    @GetMapping("/topics")
+    public TopicsResponse topics(@RequestParam(defaultValue = "6") int limit) {
+        return analyticsService.topics(limit);
     }
 
-    @GetMapping("/campaign-performance/{campaignId}")
-    public ResponseEntity<?> getCampaignPerformance(@PathVariable Long campaignId,
-                                                   @RequestHeader("X-Organization-Id") Long organizationId) {
-        try {
-            return ResponseEntity.ok(analyticsService.getCampaignPerformance(campaignId, organizationId));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponse("Failed to fetch campaign performance"));
-        }
+    @GetMapping("/agents")
+    public AgentPerformanceResponse agents(@RequestParam(defaultValue = "30") int days) {
+        return analyticsService.agentPerformance(clampDays(days));
     }
 
-    @GetMapping("/trends/{organizationId}")
-    public ResponseEntity<?> getTrends(@PathVariable Long organizationId,
-                                      @RequestParam(defaultValue = "30") int days) {
-        try {
-            return ResponseEntity.ok(analyticsService.getTrends(organizationId, days));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponse("Failed to fetch trends"));
-        }
+    @GetMapping("/lead-bands")
+    public LeadBandResponse leadBands() {
+        return analyticsService.leadBands();
     }
 
-    @GetMapping("/export/{organizationId}")
-    public ResponseEntity<?> exportData(@PathVariable Long organizationId,
-                                       @RequestParam(defaultValue = "csv") String format) {
-        try {
-            return ResponseEntity.ok(analyticsService.exportData(organizationId, format));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponse("Failed to export data"));
-        }
+    private static int clampDays(int days) {
+        return Math.min(Math.max(1, days), MAX_WINDOW_DAYS);
     }
 }
 
-class ErrorResponse {
-    private String error;
-    public ErrorResponse(String error) { this.error = error; }
+/** Usage and billing endpoints, served by the analytics service (spec §30). */
+@RestController
+@RequiredArgsConstructor
+class UsageBillingController {
+
+    private final AnalyticsService analyticsService;
+
+    @GetMapping("/usage")
+    public UsageResponse usage() {
+        return analyticsService.usage();
+    }
+
+    @GetMapping("/billing")
+    public BillingResponse billing() {
+        return analyticsService.billing();
+    }
 }

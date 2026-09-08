@@ -1,85 +1,113 @@
 package com.vayvora.knowledgeservice.controller;
 
-import com.vayvora.knowledgeservice.dto.*;
+import com.vayvora.knowledgeservice.dto.KnowledgeDtos.AddDocumentRequest;
+import com.vayvora.knowledgeservice.dto.KnowledgeDtos.CreateKnowledgeBaseRequest;
+import com.vayvora.knowledgeservice.dto.KnowledgeDtos.DocumentResponse;
+import com.vayvora.knowledgeservice.dto.KnowledgeDtos.IngestionStatsResponse;
+import com.vayvora.knowledgeservice.dto.KnowledgeDtos.KnowledgeBaseResponse;
+import com.vayvora.knowledgeservice.dto.KnowledgeDtos.MessageResponse;
+import com.vayvora.knowledgeservice.dto.KnowledgeDtos.SearchRequest;
+import com.vayvora.knowledgeservice.dto.KnowledgeDtos.SearchResponse;
 import com.vayvora.knowledgeservice.service.KnowledgeService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
+/** Knowledge base endpoints (spec §30). */
 @RestController
-@RequestMapping("/api/v1/knowledge")
+@RequestMapping("/knowledge-bases")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class KnowledgeController {
+
+    private static final int MAX_PAGE_SIZE = 100;
+
     private final KnowledgeService knowledgeService;
 
+    @GetMapping
+    public Page<KnowledgeBaseResponse> list(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return knowledgeService.list(
+                PageRequest.of(Math.max(0, page), clamp(size),
+                        Sort.by(Sort.Direction.DESC, "createdAt")));
+    }
+
+    /** Declared before {@code /{id}} so "stats" is not read as an id. */
+    @GetMapping("/stats")
+    public IngestionStatsResponse stats() {
+        return knowledgeService.stats();
+    }
+
+    @GetMapping("/{id}")
+    public KnowledgeBaseResponse get(@PathVariable String id) {
+        return knowledgeService.get(id);
+    }
+
     @PostMapping
-    public ResponseEntity<?> createKnowledgeBase(@RequestBody CreateKnowledgeBaseRequest request,
-                                                @RequestHeader("X-Organization-Id") Long organizationId) {
-        try {
-            KnowledgeBaseResponse response = knowledgeService.createKnowledgeBase(organizationId, request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new ErrorResponse("Failed to create knowledge base"));
-        }
+    public ResponseEntity<KnowledgeBaseResponse> create(
+            @Valid @RequestBody CreateKnowledgeBaseRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(knowledgeService.create(request));
     }
 
-    @PostMapping("/{knowledgeBaseId}/documents")
-    public ResponseEntity<?> addDocument(@PathVariable Long knowledgeBaseId,
-                                        @RequestBody AddDocumentRequest request,
-                                        @RequestHeader("X-Organization-Id") Long organizationId) {
-        try {
-            DocumentResponse response = knowledgeService.addDocument(knowledgeBaseId, organizationId, request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new ErrorResponse("Failed to add document"));
-        }
+    @GetMapping("/{id}/documents")
+    public Page<DocumentResponse> documents(
+            @PathVariable String id,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return knowledgeService.listDocuments(id,
+                PageRequest.of(Math.max(0, page), clamp(size),
+                        Sort.by(Sort.Direction.DESC, "createdAt")));
     }
 
-    @GetMapping("/search")
-    public ResponseEntity<?> searchKnowledge(@RequestParam String query,
-                                            @RequestParam(required = false) Long organizationId) {
-        try {
-            return ResponseEntity.ok(knowledgeService.search(query, organizationId));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponse("Failed to search knowledge"));
-        }
+    @PostMapping("/{id}/documents")
+    public ResponseEntity<DocumentResponse> addDocument(
+            @PathVariable String id,
+            @Valid @RequestBody AddDocumentRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(knowledgeService.addDocument(id, request));
     }
 
-    @GetMapping("/{knowledgeBaseId}/documents")
-    public ResponseEntity<?> getDocuments(@PathVariable Long knowledgeBaseId,
-                                         @RequestHeader("X-Organization-Id") Long organizationId) {
-        try {
-            return ResponseEntity.ok(knowledgeService.getDocuments(knowledgeBaseId, organizationId));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponse("Failed to fetch documents"));
-        }
+    /** Retrieval over the tenant's indexed content. */
+    @PostMapping("/search")
+    public SearchResponse search(@Valid @RequestBody SearchRequest request) {
+        return new SearchResponse(request.query(),
+                knowledgeService.search(request.query(), request.topK()));
     }
 
-    @DeleteMapping("/documents/{documentId}")
-    public ResponseEntity<?> deleteDocument(@PathVariable Long documentId,
-                                           @RequestHeader("X-Organization-Id") Long organizationId) {
-        try {
-            knowledgeService.deleteDocument(documentId, organizationId);
-            return ResponseEntity.ok(new SuccessResponse("Document deleted successfully"));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new ErrorResponse("Failed to delete document"));
-        }
+    private static int clamp(int size) {
+        return Math.min(Math.max(1, size), MAX_PAGE_SIZE);
     }
 }
 
-class ErrorResponse {
-    private String error;
-    public ErrorResponse(String error) { this.error = error; }
-}
+/** Document-level operations, addressed by document id. */
+@RestController
+@RequestMapping("/knowledge-documents")
+@RequiredArgsConstructor
+class KnowledgeDocumentController {
 
-class SuccessResponse {
-    private String message;
-    public SuccessResponse(String message) { this.message = message; }
+    private final KnowledgeService knowledgeService;
+
+    @PostMapping("/{id}/reingest")
+    public DocumentResponse reingest(@PathVariable String id) {
+        return knowledgeService.reingest(id);
+    }
+
+    @DeleteMapping("/{id}")
+    public MessageResponse delete(@PathVariable String id) {
+        knowledgeService.deleteDocument(id);
+        return new MessageResponse("Document deleted");
+    }
 }
